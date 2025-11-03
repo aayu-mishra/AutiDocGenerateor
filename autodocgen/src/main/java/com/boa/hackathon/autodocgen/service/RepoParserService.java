@@ -76,7 +76,7 @@ public class RepoParserService {
                                 mm.setParams(params);
                                 mm.setReturnType(m.getType().asString());
                                 mm.setComment(m.getComment().map(Comment::getContent).orElse("No comment"));
-
+                                m.getBody().ifPresent(b -> mm.setBody(b.toString()));
                                 // Repository call detection
                                 List<String> repoCalls = new ArrayList<>();
                                 m.findAll(MethodCallExpr.class).forEach(mc -> mc.getScope().ifPresent(s -> {

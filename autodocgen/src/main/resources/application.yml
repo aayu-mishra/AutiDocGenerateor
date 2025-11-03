@@ -1,0 +1,7 @@
+spring:
+  ai:
+    openai:
+      base-url: http://localhost:11434/v1
+      api-key: dummy
+      chat:
+        model: llama3

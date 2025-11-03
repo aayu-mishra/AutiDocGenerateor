@@ -14,4 +14,7 @@ public class MethodMeta {
     private List<String> domainKeywords;
     private String comment;
     private String aiDescription;
+    private String body;            // raw method body (optional)
+    private String endpoint;        // if you extracted @GetMapping value
+    private String httpMethod;
 }
