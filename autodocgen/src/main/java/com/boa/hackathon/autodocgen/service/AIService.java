@@ -62,6 +62,7 @@ public class AIService {
                 if (m.getDomainKeywords() != null) domain.addAll(m.getDomainKeywords());
             });
         }
+        log.info("sb is "+ sb.toString());
         sb.append(domain).append("\n")
                 .append("Write the answer as:\nDESCRIPTION: <long description>\nKEY_POINTS:\n - point1\n - point2");
         return sb.toString();
@@ -79,9 +80,9 @@ public class AIService {
         return sb.toString();
     }
 
-    // ✅ Main change — replaced OpenAI call with Ollama REST call
     private String callOllama(String prompt) {
         try {
+            log.info("calling ollama");
             Map<String, Object> body = Map.of(
                     "model", MODEL,
                     "prompt", prompt
@@ -97,7 +98,6 @@ public class AIService {
                 return "No response from Ollama";
             }
 
-            // Ollama returns multiple JSON chunks separated by newlines — extract "response" field
             StringBuilder output = new StringBuilder();
             for (String line : resp.getBody().split("\n")) {
                 if (line.trim().startsWith("{") && line.contains("\"response\"")) {
@@ -111,6 +111,7 @@ public class AIService {
                     }
                 }
             }
+            log.info("finished calling ollama " +output.toString());
             return output.toString().isBlank() ? resp.getBody() : output.toString();
         } catch (Exception e) {
             return "Error calling Ollama: " + e.getMessage();
