@@ -19,10 +19,32 @@
         <maven.compiler.release>21</maven.compiler.release>
     </properties>
 
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>2.25.46</version> <!-- stable LTS version -->
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>sts</artifactId>
         </dependency>
 
         <dependency>
@@ -48,6 +70,14 @@
             <version>1.18.34</version>
             <scope>provided</scope>
         </dependency>
+
+<!--        <dependency>-->
+<!--            <groupId>software.amazon.awssdk</groupId>-->
+<!--            <artifactId>s3</artifactId>-->
+<!--        </dependency>-->
+
+
+
 
         <dependency>
             <groupId>org.springdoc</groupId>

@@ -18,8 +18,9 @@ public class AIService {
     private static final Logger log = LoggerFactory.getLogger(AIService.class);
     private final RestTemplate rest = new RestTemplate();
 
-    private static final String OLLAMA_URL = "http://localhost:11434/api/generate";
-    private static final String MODEL = "llama3";
+    private static final String OLLAMA_URL = "https://openrouter.ai/api/v1/chat/completions";
+    private static final String MODEL = "meta-llama/llama-3.3-8b-instruct:free";
+    private static final String OPENROUTER_KEY = "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";
 
     public void enrichProject(ProjectMetadata pm) {
         pm.getClasses().forEach(this::enrichClass);
@@ -28,13 +29,13 @@ public class AIService {
     private void enrichClass(ClassMetadata cm) {
         try {
             String prompt = buildClassPrompt(cm);
-            String ai = callOllama(prompt);
+            String ai = callOpenRouter(prompt);
             cm.setAiDescription(ai);
 
             if (cm.getMethods() != null) {
                 for (MethodMeta mm : cm.getMethods()) {
                     String mp = buildMethodPrompt(cm, mm);
-                    String ma = callOllama(mp);
+                    String ma = callOpenRouter(mp);
                     mm.setAiDescription(ma);
                 }
             }
@@ -45,8 +46,7 @@ public class AIService {
 
     private String buildClassPrompt(ClassMetadata cm) {
         StringBuilder sb = new StringBuilder();
-        sb.append("You are a senior software engineer. Given the following class metadata, ")
-                .append("write a detailed plain-English description of the class’s business responsibility and key points.\n")
+        sb.append("You are a senior backend engineer. Analyze the following Java class and explain its business purpose and behavior clearly.\n")
                 .append("ClassName: ").append(cm.getClassName()).append("\n")
                 .append("Type: ").append(cm.getType()).append("\n")
                 .append("Package: ").append(cm.getPackageName()).append("\n")
@@ -55,22 +55,21 @@ public class AIService {
         if (cm.getMethods() != null) {
             sb.append(cm.getMethods().stream().map(MethodMeta::getName).collect(Collectors.toList()));
         } else sb.append("[]");
-        sb.append("\nDomain hints (from code): ");
+        sb.append("\nDomain hints: ");
         Set<String> domain = new HashSet<>();
         if (cm.getMethods() != null) {
             cm.getMethods().forEach(m -> {
                 if (m.getDomainKeywords() != null) domain.addAll(m.getDomainKeywords());
             });
         }
-        log.info("sb is "+ sb.toString());
         sb.append(domain).append("\n")
-                .append("Write the answer as:\nDESCRIPTION: <long description>\nKEY_POINTS:\n - point1\n - point2");
+                .append("Write the answer as:\nDESCRIPTION: <explanation>\nKEY_POINTS:\n - point1\n - point2");
         return sb.toString();
     }
 
     private String buildMethodPrompt(ClassMetadata cm, MethodMeta mm) {
         StringBuilder sb = new StringBuilder();
-        sb.append("You are a software engineer. Explain this method in one sentence in business terms, and list any side-effects (DB writes, external calls) if any.\n")
+        sb.append("You are a software engineer. Explain this Java method in one business-focused sentence and mention any side effects (like DB operations, service calls, etc.) if applicable.\n")
                 .append("Class: ").append(cm.getClassName()).append("\n")
                 .append("Method: ").append(mm.getName()).append("\n")
                 .append("Parameters: ").append(Optional.ofNullable(mm.getParams()).orElse(Collections.emptyList())).append("\n")
@@ -80,41 +79,43 @@ public class AIService {
         return sb.toString();
     }
 
-    private String callOllama(String prompt) {
+    private String callOpenRouter(String prompt) {
         try {
-            log.info("calling ollama");
-            Map<String, Object> body = Map.of(
-                    "model", MODEL,
-                    "prompt", prompt
-            );
+            if (OPENROUTER_KEY == null || OPENROUTER_KEY.isBlank()) {
+                return "Error: OPENROUTER_API_KEY not set in environment variables.";
+            }
+
+            log.info("Calling OpenRouter API...");
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("model", MODEL);
+            body.put("messages", List.of(Map.of("role", "user", "content", prompt)));
+            body.put("max_tokens", 100000);
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("Authorization", "Bearer " + OPENROUTER_KEY);
+            headers.set("HTTP-Referer", "https://autodocgen");
+            headers.set("X-Title", "AutoDocGenerator");
 
             HttpEntity<Map<String, Object>> req = new HttpEntity<>(body, headers);
-            ResponseEntity<String> resp = rest.postForEntity(OLLAMA_URL, req, String.class);
+            log.info("request is "+ req);
+            ResponseEntity<Map> resp = rest.exchange(OLLAMA_URL, HttpMethod.POST, req, Map.class);
 
-            if (resp.getStatusCode() != HttpStatus.OK || resp.getBody() == null) {
-                return "No response from Ollama";
-            }
+            if (resp.getBody() == null) return "No response received";
 
-            StringBuilder output = new StringBuilder();
-            for (String line : resp.getBody().split("\n")) {
-                if (line.trim().startsWith("{") && line.contains("\"response\"")) {
-                    int start = line.indexOf("\"response\":\"");
-                    if (start != -1) {
-                        start += 12;
-                        int end = line.indexOf("\"", start);
-                        if (end > start) {
-                            output.append(line, start, end);
-                        }
-                    }
-                }
-            }
-            log.info("finished calling ollama " +output.toString());
-            return output.toString().isBlank() ? resp.getBody() : output.toString();
+            List<?> choices = (List<?>) resp.getBody().get("choices");
+            if (choices == null || choices.isEmpty()) return "No choices returned";
+
+            Map<?, ?> first = (Map<?, ?>) choices.get(0);
+            Map<?, ?> message = (Map<?, ?>) first.get("message");
+            String content = (String) message.get("content");
+
+            log.info("AI Response: {}", content);
+            return content;
         } catch (Exception e) {
-            return "Error calling Ollama: " + e.getMessage();
+            log.error("Error calling OpenRouter: {}", e.getMessage());
+            return "Error calling OpenRouter: " + e.getMessage();
         }
     }
 }

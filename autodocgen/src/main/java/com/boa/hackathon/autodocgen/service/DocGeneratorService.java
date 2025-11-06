@@ -17,14 +17,21 @@ import java.util.zip.ZipOutputStream;
 @Service
 public class DocGeneratorService {
 
+    private final S3UploadService s3UploadService;
+
+    public DocGeneratorService(S3UploadService s3UploadService) {
+        this.s3UploadService = s3UploadService;
+    }
+
     public File generateDocsZip(ProjectMetadata pm) throws IOException {
         Path outDir = Files.createTempDirectory("autodoc_output_");
 
+        // --- Generate README.md ---
         Path readme = outDir.resolve("README.md");
         String readmeText = buildReadme(pm);
         Files.writeString(readme, readmeText);
 
-        // UML generation
+        // --- Generate UML ---
         Path puml = outDir.resolve("diagram.puml");
         String pumlText = buildPlantUml(pm);
         Files.writeString(puml, pumlText);
@@ -32,21 +39,22 @@ public class DocGeneratorService {
         Path umlPng = outDir.resolve("diagram.png");
         generateUmlPng(pumlText, umlPng);
 
+        // --- Metadata JSON ---
         Path meta = outDir.resolve("metadata.json");
         Files.writeString(meta, JsonUtil.toJson(pm));
 
-        Map<String,Object> qualityReport = new LinkedHashMap<>();
-        Map<String,Object> analysis = DocQualityAnalyzer.analyzeDocText(readmeText);
+        Map<String, Object> qualityReport = new LinkedHashMap<>();
+        Map<String, Object> analysis = DocQualityAnalyzer.analyzeDocText(readmeText);
         qualityReport.put("docAnalysis", analysis);
         qualityReport.put("similarMethods", DocQualityAnalyzer.detectSimilarMethods(pm.getClasses()));
         qualityReport.put("duplicateMethodBodies", DocQualityAnalyzer.detectDuplicateMethodBodies(pm.getClasses()));
 
-        Path swagger = outDir.resolve("openapi.json");
-        Files.writeString(swagger, buildSwagger(pm));
-
         Path quality = outDir.resolve("quality_report.json");
         ObjectMapper mapper = new ObjectMapper();
         Files.writeString(quality, mapper.writerWithDefaultPrettyPrinter().writeValueAsString(qualityReport));
+
+        Path swagger = outDir.resolve("openapi.json");
+        Files.writeString(swagger, buildSwagger(pm));
 
         Path zip = outDir.resolveSibling(pm.getProjectName() + "_autodoc.zip");
         try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(zip))) {
@@ -56,6 +64,15 @@ public class DocGeneratorService {
                 zos.closeEntry();
             }
         }
+
+        try {
+            String key = "generated-docs/" + pm.getProjectName() + "_autodoc.zip";
+            String s3Url = s3UploadService.uploadFile(zip.toFile(), key);
+            System.out.println("Uploaded to S3: " + s3Url);
+        } catch (Exception e) {
+            System.err.println("Failed to upload to S3: " + e.getMessage());
+        }
+
         return zip.toFile();
     }
 
